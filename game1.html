@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>数字落下＆合体ゲーム</title>
+<style>
+  body {
+    margin: 0;
+    background: #222;
+    overflow: hidden;
+    user-select: none;
+    font-family: sans-serif;
+  }
+  #game {
+    position: relative;
+    width: 400px;
+    height: 600px;
+    margin: 20px auto;
+    background: #333;
+    border: 3px solid #555;
+    overflow: hidden;
+  }
+  .circle {
+    position: absolute;
+    border-radius: 50%;
+    color: white;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #player {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 60px;
+    background: #0a84ff;
+    border-radius: 50%;
+    color: white;
+    font-size: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+
+<div id="game">
+  <div id="player">▽</div>
+</div>
+
+<script>
+  const game = document.getElementById('game');
+  const player = document.getElementById('player');
+  const gameWidth = game.clientWidth;
+  const gameHeight = game.clientHeight;
+
+  let circles = [];
+  let playerX = gameWidth / 2 - 30; // プレイヤーの初期位置（左端座標）
+
+  // キーボードでプレイヤー移動
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    keys[e.key] = true;
+  });
+  window.addEventListener('keyup', e => {
+    keys[e.key] = false;
+  });
+
+  // 数字ごとの円の大きさ設定
+  function getCircleSize(num) {
+    // 数字が大きいほど大きく (例: 30px〜60px)
+    return 20 + num * 8;
+  }
+
+  // 円を作成
+  function createCircle(num, x, y) {
+    const el = document.createElement('div');
+    const size = getCircleSize(num);
+    el.classList.add('circle');
+    el.style.width = size + 'px';
+    el.style.height = size + 'px';
+    el.style.lineHeight = size + 'px';
+    el.textContent = num;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    el.style.fontSize = (size / 2) + 'px';
+    el.style.background = `hsl(${num * 60}, 70%, 50%)`;
+    game.appendChild(el);
+
+    return { el, num, x, y, size, vy: 2 };
+  }
+
+  // 衝突判定（円同士）
+  function isColliding(c1, c2) {
+    const dx = (c1.x + c1.size/2) - (c2.x + c2.size/2);
+    const dy = (c1.y + c1.size/2) - (c2.y + c2.size/2);
+    const distance = Math.sqrt(dx*dx + dy*dy);
+    return distance < (c1.size/2 + c2.size/2);
+  }
+
+  // ゲームループ
+  function update() {
+    // プレイヤー移動
+    if (keys['ArrowLeft']) {
+      playerX -= 5;
+      if (playerX < 0) playerX = 0;
+    }
+    if (keys['ArrowRight']) {
+      playerX += 5;
+      if (playerX > gameWidth - player.clientWidth) playerX = gameWidth - player.clientWidth;
+    }
+    player.style.left = playerX + 'px';
+
+    // 円を落下させる
+    circles.forEach(c => {
+      c.y += c.vy;
+
+      // プレイヤーとの接触判定
+      const playerRect = {
+        x: playerX,
+        y: gameHeight - player.clientHeight - 10,
+        width: player.clientWidth,
+        height: player.clientHeight
+      };
+      const cCenterX = c.x + c.size / 2;
+      const cCenterY = c.y + c.size / 2;
+
+      // プレイヤーに当たったら止めてy固定
+      if (
+        cCenterX > playerRect.x &&
+        cCenterX < playerRect.x + playerRect.width &&
+        cCenterY + c.size / 2 >= playerRect.y
+      ) {
+        c.y = playerRect.y - c.size;
+        c.vy = 0;
+      }
+
+      c.el.style.top = c.y + 'px';
+    });
+
+    // 円同士の衝突＆合体処理
+    for(let i = 0; i < circles.length; i++) {
+      for(let j = i + 1; j < circles.length; j++) {
+        const c1 = circles[i];
+        const c2 = circles[j];
+        if (c1.vy === 0 && c2.vy === 0 && c1.num === c2.num && isColliding(c1, c2)) {
+          // 合体
+          const newNum = c1.num + c2.num;
+          const newX = (c1.x + c2.x) / 2;
+          const newY = (c1.y + c2.y) / 2;
+
+          // 新しい円を作る
+          const newCircle = createCircle(newNum, newX, newY);
+          newCircle.vy = 0;
+
+          // 古い円削除
+          game.removeChild(c1.el);
+          game.removeChild(c2.el);
+          circles.splice(j,1);
+          circles.splice(i,1);
+          circles.push(newCircle);
+          // ループ破壊防止のためbreak
+          break;
+        }
+      }
+    }
+
+    // 落ちてる円の数が少なければ新しい円を追加
+    if (circles.filter(c => c.vy !== 0).length < 3) {
+      spawnCircle();
+    }
+
+    requestAnimationFrame(update);
+  }
+
+  // 円を上部のランダムxに生成 (数字は1〜5)
+  function spawnCircle() {
+    const num = Math.floor(Math.random()*5) + 1;
+    const size = getCircleSize(num);
+    const x = Math.random() * (gameWidth - size);
+    const y = -size;
+    circles.push(createCircle(num, x, y));
+  }
+
+  spawnCircle();
+  update();
+</script>
+
+</body>
+</html>
